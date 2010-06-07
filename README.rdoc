@@ -2,6 +2,54 @@
 
 This is a plugin for integrating facebook sessions into authlogic.
 
+Changes:
+* Slightly cleaner integration of facebook_session by removing some statefulness and
+  moving more into the model (see code below)
+* Addes a facebook_session_key field for offline access  
+
+This requires a config/facebook.yml file that looks like this:
+
+  development:
+    app_id: xxx123xxx
+
+  production:
+    app_id: xxx123xxx
+
+You also need to add this you your user model which some nice person should properly include in the gem.  I'm not sure how to do that correctly.
+
+
+  def facebook_session
+    return @facebook_session if @facebook_session
+    @facebook_session = OpenStruct.new( {:uid => facebook_uid, :access_token => facebook_session_key} )
+  end
+
+  def facebook_graph
+    @facebook_graph ||= facebook_session && Koala::Facebook::GraphAPI.new(facebook_session.access_token)
+  end
+
+  def facebook_user
+    return @facebook_user if @facebook_user
+    facebook_user = facebook_graph && facebook_graph.get_object('me')
+    # id properties are bad
+    facebook_user[:uid] = facebook_user['id']
+    return @facebook_user = OpenStruct.new(facebook_user)
+  end
+    
+
+This is an example of a useful sync method on your user model:
+
+
+  def facebook_sync
+    self.name = facebook_user.name
+    self.facebook_uid = facebook_user.uid
+    self.facebook_session_key = facebook_session.access_token
+    self.email = facebook_user.email
+    self.avatar = facebook_graph.get_picture facebook_uid
+    self.save(false)
+  end
+
+
+
 == Note on Patches/Pull Requests
 
 * Fork the project.

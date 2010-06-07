@@ -82,26 +82,28 @@ module AuthlogicFacebookKoala
       protected
       # Override this if you want only some requests to use facebook
       def authenticating_with_facebook?
-        if controller.respond_to?(:controller) && controller.controller.respond_to?(:set_facebook_session)
-          controller.set_facebook_session
-          !authenticating_with_unauthorized_record? && controller.facebook_session?
+        # controller is actually an authlogic wrapper for the controller
+        if controller.respond_to?(:controller) && controller.controller.respond_to?(:create_facebook_session)
+          @facebook_session = controller.create_facebook_session
+          !authenticating_with_unauthorized_record? && @facebook_session
         end
       end
 
       private
       
       def validate_by_facebook
-        puts "validating with facebook"
-        facebook_uid = facebook_session.uid
+        facebook_uid = @facebook_session.uid
         self.attempted_record = klass.send(facebook_finder, facebook_uid)
-
         if self.attempted_record || !facebook_auto_register?
+          # keep the fb session key in sync
+          self.attempted_record.facebook_session_key = @facebook_session.access_token
+          self.attempted_record.save(false)
           return @logged_in_with_facebook = !!self.attempted_record
         else
           self.attempted_record = klass.new
           self.attempted_record.send(:"#{facebook_uid_field}=", facebook_uid)
           if self.attempted_record.respond_to?(:before_connect)
-            self.attempted_record.send(:before_connect, facebook_session)
+            self.attempted_record.send(:before_connect, @facebook_session)
           end
 
           @logged_in_with_facebook = true
@@ -109,16 +111,9 @@ module AuthlogicFacebookKoala
         end
       end
 
-      def facebook_user
-        controller.facebook_user
-      end
-
-      def facebook_session
-        controller.facebook_session
-      end
-
       def facebook_auto_register?
         self.class.facebook_auto_register
+        true
       end
 
       def facebook_uid_field
